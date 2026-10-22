@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import './App.css'
 
 type Category = 'Керамика' | 'Текстиль' | 'Для дома' | 'Свет'
@@ -9,6 +9,7 @@ type Product = {
   category: Category
   price: number
   image: string
+  stock: number
   badge?: string
 }
 
@@ -19,86 +20,47 @@ type CartItem = {
 
 const categories = ['Всё', 'Керамика', 'Текстиль', 'Для дома', 'Свет'] as const
 
-const products: Product[] = [
-  {
-    id: 1,
-    name: 'Ваза «Тихое утро»',
-    category: 'Керамика',
-    price: 3200,
-    image:
-      'https://images.unsplash.com/photo-1578500494198-246f612d3b3d?auto=format&fit=crop&w=900&q=85',
-    badge: 'Хит',
-  },
-  {
-    id: 2,
-    name: 'Льняная скатерть',
-    category: 'Текстиль',
-    price: 4900,
-    image:
-      'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=900&q=85',
-  },
-  {
-    id: 3,
-    name: 'Чашка «Облако»',
-    category: 'Керамика',
-    price: 1800,
-    image:
-      'https://images.unsplash.com/photo-1577937927133-66ef06acdf18?auto=format&fit=crop&w=900&q=85',
-    badge: 'Новинка',
-  },
-  {
-    id: 4,
-    name: 'Подсвечник «Форма»',
-    category: 'Для дома',
-    price: 2400,
-    image:
-      'https://images.unsplash.com/photo-1603006905003-be475563bc59?auto=format&fit=crop&w=900&q=85',
-  },
-  {
-    id: 5,
-    name: 'Настольная лампа',
-    category: 'Свет',
-    price: 8700,
-    image:
-      'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?auto=format&fit=crop&w=900&q=85',
-    badge: 'Мало осталось',
-  },
-  {
-    id: 6,
-    name: 'Плед «Тёплый песок»',
-    category: 'Текстиль',
-    price: 6200,
-    image:
-      'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=900&q=85',
-  },
-  {
-    id: 7,
-    name: 'Керамическая ваза',
-    category: 'Керамика',
-    price: 3900,
-    image:
-      'https://images.unsplash.com/photo-1577937927133-66ef06acdf18?auto=format&fit=crop&w=900&q=85',
-  },
-  {
-    id: 8,
-    name: 'Диффузор «Лес после дождя»',
-    category: 'Для дома',
-    price: 2900,
-    image:
-      'https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?auto=format&fit=crop&w=900&q=85',
-  },
-]
-
 const formatPrice = (price: number) =>
   `${new Intl.NumberFormat('ru-RU').format(price)} ₽`
 
 function App() {
+  const [products, setProducts] = useState<Product[]>([])
+  const [productsLoading, setProductsLoading] = useState(true)
+  const [productsError, setProductsError] = useState('')
+  const [csrfToken, setCsrfToken] = useState('')
   const [activeCategory, setActiveCategory] = useState<string>('Всё')
   const [search, setSearch] = useState('')
   const [cart, setCart] = useState<CartItem[]>([])
   const [cartOpen, setCartOpen] = useState(false)
   const [favorites, setFavorites] = useState<number[]>([])
   const [favoritesOnly, setFavoritesOnly] = useState(false)
+  const [orderSubmitting, setOrderSubmitting] = useState(false)
+  const [orderError, setOrderError] = useState('')
+  const [orderSuccess, setOrderSuccess] = useState<number | null>(null)
+
+  useEffect(() => {
+    const controller = new AbortController()
+
+    async function loadProducts() {
+      try {
+        const response = await fetch('/api/products/', { signal: controller.signal })
+        const data = await response.json()
+        if (!response.ok) {
+          throw new Error(data.error || 'Не удалось загрузить каталог.')
+        }
+        setProducts(data.products)
+        setCsrfToken(data.csrfToken)
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') return
+        setProductsError(error instanceof Error ? error.message : 'Ошибка загрузки каталога.')
+      } finally {
+        if (!controller.signal.aborted) setProductsLoading(false)
+      }
+    }
+
+    void loadProducts()
+    return () => controller.abort()
+  }, [])
 
   const visibleProducts = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('ru')
@@ -115,7 +77,7 @@ function App() {
 
       return matchesCategory && matchesSearch && matchesFavorite
     })
-  }, [activeCategory, favorites, favoritesOnly, search])
+  }, [activeCategory, favorites, favoritesOnly, products, search])
 
   const cartProducts = cart.flatMap((item) => {
     const product = products.find((entry) => entry.id === item.productId)
@@ -128,6 +90,13 @@ function App() {
   )
 
   function addToCart(productId: number) {
+    const product = products.find((entry) => entry.id === productId)
+    const currentQuantity =
+      cart.find((item) => item.productId === productId)?.quantity ?? 0
+    if (!product || currentQuantity >= product.stock) return
+
+    setOrderError('')
+    setOrderSuccess(null)
     setCart((currentCart) => {
       const existingItem = currentCart.find(
         (item) => item.productId === productId,
@@ -147,15 +116,64 @@ function App() {
   }
 
   function changeQuantity(productId: number, change: number) {
+    const product = products.find((entry) => entry.id === productId)
     setCart((currentCart) =>
       currentCart
         .map((item) =>
           item.productId === productId
-            ? { ...item, quantity: item.quantity + change }
+            ? {
+                ...item,
+                quantity: Math.min(
+                  product?.stock ?? item.quantity,
+                  item.quantity + change,
+                ),
+              }
             : item,
         )
         .filter((item) => item.quantity > 0),
     )
+  }
+
+  async function submitOrder(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setOrderSubmitting(true)
+    setOrderError('')
+
+    const formData = new FormData(event.currentTarget)
+    try {
+      const response = await fetch('/api/orders/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken,
+        },
+        body: JSON.stringify({
+          customerName: formData.get('customerName'),
+          phone: formData.get('phone'),
+          address: formData.get('address'),
+          items: cart.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+          })),
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || 'Не удалось оформить заказ.')
+      }
+      setProducts((currentProducts) =>
+        currentProducts.map((product) =>
+          data.products.find((updatedProduct: Product) => updatedProduct.id === product.id) ??
+          product,
+        ),
+      )
+      setOrderSuccess(data.order.id)
+      setCart([])
+    } catch (error) {
+      setOrderError(error instanceof Error ? error.message : 'Ошибка оформления заказа.')
+    } finally {
+      setOrderSubmitting(false)
+    }
   }
 
   function toggleFavorite(productId: number) {
@@ -269,7 +287,13 @@ function App() {
           </label>
         </div>
 
-        {visibleProducts.length > 0 ? (
+        {productsLoading ? (
+          <div className="catalog-message" role="status">Загружаем каталог…</div>
+        ) : productsError ? (
+          <div className="catalog-message catalog-message--error" role="alert">
+            {productsError}
+          </div>
+        ) : visibleProducts.length > 0 ? (
           <div className="product-grid">
             {visibleProducts.map((product, index) => (
               <article className="product-card" key={product.id}>
@@ -289,9 +313,13 @@ function App() {
                     className="quick-add"
                     type="button"
                     onClick={() => addToCart(product.id)}
+                    disabled={
+                      product.stock === 0 ||
+                      (cart.find((item) => item.productId === product.id)?.quantity ?? 0) >= product.stock
+                    }
                     aria-label={`Добавить в корзину: ${product.name}`}
                   >
-                    +
+                    {product.stock === 0 ? 'Нет в наличии' : '+'}
                   </button>
                 </div>
                 <div className="product-info">
@@ -366,7 +394,23 @@ function App() {
                 ×
               </button>
             </div>
-            {cartProducts.length ? (
+            {orderSuccess ? (
+              <div className="order-success" role="status">
+                <span aria-hidden="true">✓</span>
+                <h3>Заказ №{orderSuccess} принят</h3>
+                <p>Мы свяжемся с вами по телефону для подтверждения.</p>
+                <button
+                  className="button button--dark"
+                  type="button"
+                  onClick={() => {
+                    setOrderSuccess(null)
+                    setCartOpen(false)
+                  }}
+                >
+                  Продолжить покупки
+                </button>
+              </div>
+            ) : cartProducts.length ? (
               <>
                 <div className="cart-items">
                   {cartProducts.map((item) => (
@@ -388,6 +432,7 @@ function App() {
                           <button
                             type="button"
                             onClick={() => changeQuantity(item.id, 1)}
+                            disabled={item.quantity >= item.stock}
                             aria-label={`Увеличить количество: ${item.name}`}
                           >
                             +
@@ -399,10 +444,33 @@ function App() {
                 </div>
                 <div className="cart-summary">
                   <div><span>Итого</span><strong>{formatPrice(cartTotal)}</strong></div>
-                  <p>Доставка рассчитывается при оформлении</p>
-                  <button className="button button--dark checkout-button" type="button" disabled>
-                    Скоро здесь будет оформление
-                  </button>
+                  <p>Оплата согласовывается после подтверждения заказа.</p>
+                  <form className="checkout-form" onSubmit={submitOrder}>
+                    <label>
+                      Ваше имя
+                      <input name="customerName" autoComplete="name" required minLength={2} maxLength={120} />
+                    </label>
+                    <label>
+                      Телефон
+                      <input
+                        name="phone"
+                        type="tel"
+                        autoComplete="tel"
+                        placeholder="+7 999 123-45-67"
+                        required
+                        pattern="[+()0-9 .-]{7,24}"
+                        title="Введите корректный номер телефона"
+                      />
+                    </label>
+                    <label>
+                      Адрес доставки
+                      <input name="address" autoComplete="street-address" required minLength={5} maxLength={300} />
+                    </label>
+                    {orderError && <p className="checkout-error" role="alert">{orderError}</p>}
+                    <button className="button button--dark checkout-button" type="submit" disabled={orderSubmitting || !csrfToken}>
+                      {orderSubmitting ? 'Отправляем заказ…' : 'Оформить заказ'}
+                    </button>
+                  </form>
                   <button className="continue-shopping" type="button" onClick={() => setCartOpen(false)}>
                     Продолжить покупки
                   </button>
