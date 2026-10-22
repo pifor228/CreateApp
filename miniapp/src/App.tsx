@@ -1,203 +1,426 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import './App.css'
 
-const trips = [
+type Category = 'Керамика' | 'Текстиль' | 'Для дома' | 'Свет'
+
+type Product = {
+  id: number
+  name: string
+  category: Category
+  price: number
+  image: string
+  badge?: string
+}
+
+type CartItem = {
+  productId: number
+  quantity: number
+}
+
+const categories = ['Всё', 'Керамика', 'Текстиль', 'Для дома', 'Свет'] as const
+
+const products: Product[] = [
   {
-    title: 'Алтай без спешки',
-    location: 'Россия · 7 дней',
-    price: 'от 68 000 ₽',
+    id: 1,
+    name: 'Ваза «Тихое утро»',
+    category: 'Керамика',
+    price: 3200,
     image:
-      'https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=1000&q=85',
-    alt: 'Горное озеро и долина на рассвете',
-    className: 'trip-card--altai',
+      'https://images.unsplash.com/photo-1578500494198-246f612d3b3d?auto=format&fit=crop&w=900&q=85',
+    badge: 'Хит',
   },
   {
-    title: 'Тропами Дагестана',
-    location: 'Россия · 5 дней',
-    price: 'от 52 000 ₽',
+    id: 2,
+    name: 'Льняная скатерть',
+    category: 'Текстиль',
+    price: 4900,
     image:
-      'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1000&q=85',
-    alt: 'Скалистые горы в мягком вечернем свете',
-    className: 'trip-card--dagestan',
+      'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=900&q=85',
   },
   {
-    title: 'Карелия на выдохе',
-    location: 'Россия · 4 дня',
-    price: 'от 39 000 ₽',
+    id: 3,
+    name: 'Чашка «Облако»',
+    category: 'Керамика',
+    price: 1800,
     image:
-      'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=1000&q=85',
-    alt: 'Солнечный свет в тихом хвойном лесу',
-    className: 'trip-card--karelia',
+      'https://images.unsplash.com/photo-1577937927133-66ef06acdf18?auto=format&fit=crop&w=900&q=85',
+    badge: 'Новинка',
+  },
+  {
+    id: 4,
+    name: 'Подсвечник «Форма»',
+    category: 'Для дома',
+    price: 2400,
+    image:
+      'https://images.unsplash.com/photo-1603006905003-be475563bc59?auto=format&fit=crop&w=900&q=85',
+  },
+  {
+    id: 5,
+    name: 'Настольная лампа',
+    category: 'Свет',
+    price: 8700,
+    image:
+      'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?auto=format&fit=crop&w=900&q=85',
+    badge: 'Мало осталось',
+  },
+  {
+    id: 6,
+    name: 'Плед «Тёплый песок»',
+    category: 'Текстиль',
+    price: 6200,
+    image:
+      'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=900&q=85',
+  },
+  {
+    id: 7,
+    name: 'Керамическая ваза',
+    category: 'Керамика',
+    price: 3900,
+    image:
+      'https://images.unsplash.com/photo-1577937927133-66ef06acdf18?auto=format&fit=crop&w=900&q=85',
+  },
+  {
+    id: 8,
+    name: 'Диффузор «Лес после дождя»',
+    category: 'Для дома',
+    price: 2900,
+    image:
+      'https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?auto=format&fit=crop&w=900&q=85',
   },
 ]
 
-function ArrowIcon({ diagonal = false }: { diagonal?: boolean }) {
-  return (
-    <svg
-      aria-hidden="true"
-      className={diagonal ? 'arrow-icon arrow-icon--diagonal' : 'arrow-icon'}
-      viewBox="0 0 20 20"
-      fill="none"
-    >
-      <path d="M3.5 10h12m-5-5 5 5-5 5" />
-    </svg>
-  )
-}
+const formatPrice = (price: number) =>
+  `${new Intl.NumberFormat('ru-RU').format(price)} ₽`
 
 function App() {
-  const [menuOpen, setMenuOpen] = useState(false)
+  const [activeCategory, setActiveCategory] = useState<string>('Всё')
+  const [search, setSearch] = useState('')
+  const [cart, setCart] = useState<CartItem[]>([])
+  const [cartOpen, setCartOpen] = useState(false)
+  const [favorites, setFavorites] = useState<number[]>([])
+  const [favoritesOnly, setFavoritesOnly] = useState(false)
 
-  const closeMenu = () => setMenuOpen(false)
+  const visibleProducts = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase('ru')
+
+    return products.filter((product) => {
+      const matchesCategory =
+        activeCategory === 'Всё' || product.category === activeCategory
+      const matchesSearch =
+        !query ||
+        product.name.toLocaleLowerCase('ru').includes(query) ||
+        product.category.toLocaleLowerCase('ru').includes(query)
+      const matchesFavorite =
+        !favoritesOnly || favorites.includes(product.id)
+
+      return matchesCategory && matchesSearch && matchesFavorite
+    })
+  }, [activeCategory, favorites, favoritesOnly, search])
+
+  const cartProducts = cart.flatMap((item) => {
+    const product = products.find((entry) => entry.id === item.productId)
+    return product ? [{ ...product, quantity: item.quantity }] : []
+  })
+  const cartCount = cart.reduce((total, item) => total + item.quantity, 0)
+  const cartTotal = cartProducts.reduce(
+    (total, item) => total + item.price * item.quantity,
+    0,
+  )
+
+  function addToCart(productId: number) {
+    setCart((currentCart) => {
+      const existingItem = currentCart.find(
+        (item) => item.productId === productId,
+      )
+
+      if (existingItem) {
+        return currentCart.map((item) =>
+          item.productId === productId
+            ? { ...item, quantity: item.quantity + 1 }
+            : item,
+        )
+      }
+
+      return [...currentCart, { productId, quantity: 1 }]
+    })
+    setCartOpen(true)
+  }
+
+  function changeQuantity(productId: number, change: number) {
+    setCart((currentCart) =>
+      currentCart
+        .map((item) =>
+          item.productId === productId
+            ? { ...item, quantity: item.quantity + change }
+            : item,
+        )
+        .filter((item) => item.quantity > 0),
+    )
+  }
+
+  function toggleFavorite(productId: number) {
+    setFavorites((currentFavorites) =>
+      currentFavorites.includes(productId)
+        ? currentFavorites.filter((id) => id !== productId)
+        : [...currentFavorites, productId],
+    )
+  }
 
   return (
     <main>
-      <header className="site-header">
-        <a className="wordmark" href="#home" aria-label="Тихо — на главную" onClick={closeMenu}>
+      <div className="announcement">
+        <span>Предметный дизайн для современного дома</span>
+        <span className="announcement-note">Доставка по России · бережная упаковка</span>
+      </div>
+
+      <header className="store-header">
+        <a className="store-logo" href="#home" aria-label="Дом тихо — на главную">
           тихо<span>.</span>
         </a>
-
-        <button
-          className="menu-toggle"
-          type="button"
-          aria-label={menuOpen ? 'Закрыть меню' : 'Открыть меню'}
-          aria-expanded={menuOpen}
-          onClick={() => setMenuOpen(!menuOpen)}
-        >
-          <span />
-          <span />
-        </button>
-
-        <nav className={menuOpen ? 'main-nav main-nav--open' : 'main-nav'} aria-label="Главная навигация">
-          <a href="#trips" onClick={closeMenu}>Путешествия</a>
-          <a href="#about" onClick={closeMenu}>О нас</a>
-          <a href="#journal" onClick={closeMenu}>Журнал</a>
-          <a className="nav-contact" href="mailto:hello@tiho.travel" onClick={closeMenu}>
-            Связаться <ArrowIcon diagonal />
-          </a>
+        <nav className="store-nav" aria-label="Основная навигация">
+          <a href="#catalog">Каталог</a>
+          <a href="#story">Наша история</a>
+          <a href="#footer">Контакты</a>
         </nav>
+        <button
+          className="cart-trigger"
+          type="button"
+          onClick={() => setCartOpen(true)}
+          aria-label={`Открыть корзину, товаров: ${cartCount}`}
+        >
+          Корзина <span className="cart-count">{cartCount}</span>
+        </button>
       </header>
 
-      <section className="hero" id="home">
+      <section className="shop-hero" id="home">
         <div className="hero-copy">
-          <p className="eyebrow"><span className="eyebrow-dot" /> Авторские путешествия по России</p>
-          <h1>Ближе к природе.<br /><em>Ближе к себе.</em></h1>
+          <p className="eyebrow"><span className="eyebrow-dot" /> Коллекция предметов для дома</p>
+          <h1>Форма.<br /><em>Материал. Атмосфера.</em></h1>
           <p className="hero-description">
-            Небольшие путешествия в места, где можно замедлиться, вдохнуть полной грудью и услышать себя.
+            Предметы, которые сочетают выразительный дизайн и повседневную
+            функциональность. Для пространства, в котором хочется быть.
           </p>
-          <div className="hero-actions">
-            <a className="button button--dark" href="#trips">
-              Выбрать путешествие <ArrowIcon />
-            </a>
-            <span className="hero-note">Маленькие группы · Большие впечатления</span>
-          </div>
-          <div className="hero-foot">
-            <span>56° 14′ 12.8″ N</span>
-            <span className="hero-foot-line" />
-            <span>Путешествуем иначе</span>
+          <a className="button button--dark" href="#catalog">
+            Смотреть коллекцию <span aria-hidden="true">↗</span>
+          </a>
+          <div className="hero-details">
+            <span>Независимые мастерские</span>
+            <span>Натуральные материалы</span>
+            <span>Доставка по России</span>
           </div>
         </div>
-
         <div className="hero-visual">
           <img
-            className="hero-image"
-            src="https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1500&q=90"
-            alt="Тихая горная долина, залитая мягким утренним светом"
+            src="https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1500&q=90"
+            alt="Современная светлая гостиная в натуральной цветовой гамме"
           />
-          <div className="image-shade" />
           <div className="hero-image-caption">
-            <span className="caption-kicker">Место, которое останется с тобой</span>
-            <span className="caption-title">Укок, Алтай</span>
+            <span>Коллекция для дома</span>
+            <strong>Спокойствие в деталях</strong>
           </div>
-          <div className="floating-note">
-            <span className="note-mark">✳</span>
-            <span>Не маршрут.<br />Состояние.</span>
-          </div>
-          <div className="image-index"><span>01</span> / 04</div>
-        </div>
-        <a href="#trips" className="scroll-cue" aria-label="Прокрутить к путешествиям">
-          <span />
-        </a>
-      </section>
-
-      <section className="intro section-wrap" id="about">
-        <div className="section-label"><span>01</span> Наш подход</div>
-        <div className="intro-content">
-          <h2>Иногда лучшее,<br />что можно сделать — <em>уехать.</em></h2>
-          <div className="intro-aside">
-            <p>Мы собираем поездки для тех, кому хочется не просто увидеть новое место, а по-настоящему в нём побыть.</p>
-            <a className="text-link" href="#journal">Узнать нашу историю <ArrowIcon /></a>
-          </div>
-        </div>
-        <div className="value-row">
-          <div className="value-item">
-            <span className="value-number">01</span>
-            <h3>Без толпы</h3>
-            <p>До 8 человек в группе — чтобы сохранить ощущение свободы.</p>
-          </div>
-          <div className="value-item">
-            <span className="value-number">02</span>
-            <h3>С местными</h3>
-            <p>Показываем места глазами тех, кто называет их домом.</p>
-          </div>
-          <div className="value-item">
-            <span className="value-number">03</span>
-            <h3>С заботой</h3>
-            <p>Продумываем всё важное, оставляя место для неожиданного.</p>
-          </div>
+          <span className="hero-stamp" aria-hidden="true">ТИХО<br />ДОМА</span>
         </div>
       </section>
 
-      <section className="trips-section" id="trips">
-        <div className="section-wrap">
-          <div className="trips-heading">
-            <div>
-              <div className="section-label"><span>02</span> Ближайшие поездки</div>
-              <h2>Выдохни. <em>Мы всё придумали.</em></h2>
-            </div>
-            <a className="text-link trips-all" href="mailto:hello@tiho.travel">
-              Все путешествия <ArrowIcon />
-            </a>
+      <section className="catalog section-wrap" id="catalog">
+        <div className="catalog-heading">
+          <div>
+            <p className="section-label"><span>01</span> Коллекция сезона</p>
+            <h2>Продуманные детали <em>для дома.</em></h2>
           </div>
-          <div className="trip-grid">
-            {trips.map((trip, index) => (
-              <a className={`trip-card ${trip.className}`} href="mailto:hello@tiho.travel" key={trip.title}>
-                <div className="trip-image-wrap">
-                  <img src={trip.image} alt={trip.alt} loading="lazy" />
-                  <span className="trip-index">0{index + 1}</span>
-                  <span className="trip-arrow"><ArrowIcon diagonal /></span>
+          <p className="catalog-intro">
+            Фактурные материалы, лаконичные формы и внимание к деталям.
+          </p>
+        </div>
+
+        <div className="catalog-controls">
+          <div className="category-list" aria-label="Категории товаров">
+            {categories.map((category) => (
+              <button
+                className={activeCategory === category ? 'category-button is-active' : 'category-button'}
+                key={category}
+                type="button"
+                onClick={() => setActiveCategory(category)}
+                aria-pressed={activeCategory === category}
+              >
+                {category}
+              </button>
+            ))}
+            <button
+              className={`category-button favorites-filter${favoritesOnly ? ' is-active' : ''}`}
+              type="button"
+              onClick={() => setFavoritesOnly((current) => !current)}
+              aria-pressed={favoritesOnly}
+              aria-label={`Показать избранное, выбрано ${favorites.length}`}
+            >
+              <span aria-hidden="true">♡</span> Избранное
+              {favorites.length > 0 && <span className="favorites-count">{favorites.length}</span>}
+            </button>
+          </div>
+          <label className="search-field">
+            <span className="search-icon" aria-hidden="true">⌕</span>
+            <input
+              type="search"
+              placeholder="Найти вещь..."
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              aria-label="Поиск по товарам"
+            />
+          </label>
+        </div>
+
+        {visibleProducts.length > 0 ? (
+          <div className="product-grid">
+            {visibleProducts.map((product, index) => (
+              <article className="product-card" key={product.id}>
+                <div className={`product-image product-image--${index % 4}`}>
+                  <img src={product.image} alt={product.name} loading="lazy" />
+                  {product.badge && <span className="product-badge">{product.badge}</span>}
+                  <button
+                    className={`favorite-button${favorites.includes(product.id) ? ' is-favorite' : ''}`}
+                    type="button"
+                    onClick={() => toggleFavorite(product.id)}
+                    aria-label={`${favorites.includes(product.id) ? 'Убрать из избранного' : 'Добавить в избранное'}: ${product.name}`}
+                    aria-pressed={favorites.includes(product.id)}
+                  >
+                    <span aria-hidden="true">{favorites.includes(product.id) ? '♥' : '♡'}</span>
+                  </button>
+                  <button
+                    className="quick-add"
+                    type="button"
+                    onClick={() => addToCart(product.id)}
+                    aria-label={`Добавить в корзину: ${product.name}`}
+                  >
+                    +
+                  </button>
                 </div>
-                <div className="trip-info">
+                <div className="product-info">
                   <div>
-                    <p className="trip-location">{trip.location}</p>
-                    <h3>{trip.title}</h3>
+                    <p className="product-category">{product.category}</p>
+                    <h3>{product.name}</h3>
                   </div>
-                  <span className="trip-price">{trip.price}</span>
+                  <span className="product-price">{formatPrice(product.price)}</span>
                 </div>
-              </a>
+              </article>
             ))}
           </div>
+        ) : (
+          <div className="empty-search">
+            <span aria-hidden="true">{favoritesOnly && favorites.length === 0 ? '♡' : '⌕'}</span>
+            <p>{favoritesOnly && favorites.length === 0 ? 'Пока нет избранных вещей' : 'Ничего не нашли'}</p>
+            <button type="button" onClick={() => { setSearch(''); setActiveCategory('Всё'); setFavoritesOnly(false) }}>
+              Сбросить фильтры
+            </button>
+          </div>
+        )}
+      </section>
+
+      <section className="story-section" id="story">
+        <div className="story-mark" aria-hidden="true">т.</div>
+        <div className="story-copy">
+          <p className="section-label"><span>02</span> О магазине</p>
+          <h2>Меньше случайного.<br /><em>Больше вашего.</em></h2>
+          <p>
+            Мы собираем предметы от небольших мастерских и независимых авторов.
+            Каждую вещь выбираем за качество, долговечность и ясную идею.
+          </p>
+          <a href="#catalog" className="text-link">Перейти в каталог <span aria-hidden="true">→</span></a>
+        </div>
+        <div className="story-image">
+          <img
+            src="https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=1000&q=85"
+            alt="Тёплый уголок дома с предметами ручной работы"
+            loading="lazy"
+          />
         </div>
       </section>
 
-      <section className="journal-section section-wrap" id="journal">
-        <div className="journal-note">
-          <span className="journal-star">✳</span>
-          <p>Меньше планов.<br />Больше <em>жизни.</em></p>
-        </div>
-        <div className="journal-content">
-          <div className="section-label"><span>03</span> Письма из пути</div>
-          <h2>Сохраняем моменты,<br />которые <em>не хочется забыть.</em></h2>
-          <p>Истории, маршруты и маленькие открытия — иногда полезно прочитать перед дорогой.</p>
-          <a className="text-link" href="mailto:hello@tiho.travel">Заглянуть в журнал <ArrowIcon /></a>
-        </div>
-      </section>
-
-      <footer className="site-footer">
-        <a className="wordmark footer-wordmark" href="#home">тихо<span>.</span></a>
-        <p>Хорошие места. Свои люди. Твоё время.</p>
-        <a href="mailto:hello@tiho.travel">hello@tiho.travel <ArrowIcon diagonal /></a>
+      <footer className="store-footer" id="footer">
+        <a className="store-logo" href="#home">тихо<span>.</span></a>
+        <p>Продуманные предметы для повседневной жизни.</p>
+        <a href="mailto:hello@tiho.store">hello@tiho.store <span aria-hidden="true">↗</span></a>
         <span className="copyright">© тихо, 2025</span>
       </footer>
+
+      {cartOpen && (
+        <div className="cart-overlay" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setCartOpen(false)
+        }}>
+          <aside
+            className="cart-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cart-title"
+          >
+            <div className="cart-heading">
+              <div>
+                <p className="section-label">Ваш выбор</p>
+                <h2 id="cart-title">Корзина <span>({cartCount})</span></h2>
+              </div>
+              <button
+                className="cart-close"
+                type="button"
+                onClick={() => setCartOpen(false)}
+                aria-label="Закрыть корзину"
+              >
+                ×
+              </button>
+            </div>
+            {cartProducts.length ? (
+              <>
+                <div className="cart-items">
+                  {cartProducts.map((item) => (
+                    <article className="cart-item" key={item.id}>
+                      <img src={item.image} alt="" />
+                      <div className="cart-item-info">
+                        <p>{item.category}</p>
+                        <h3>{item.name}</h3>
+                        <strong>{formatPrice(item.price)}</strong>
+                        <div className="quantity-control">
+                          <button
+                            type="button"
+                            onClick={() => changeQuantity(item.id, -1)}
+                            aria-label={`Уменьшить количество: ${item.name}`}
+                          >
+                            −
+                          </button>
+                          <span>{item.quantity}</span>
+                          <button
+                            type="button"
+                            onClick={() => changeQuantity(item.id, 1)}
+                            aria-label={`Увеличить количество: ${item.name}`}
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+                <div className="cart-summary">
+                  <div><span>Итого</span><strong>{formatPrice(cartTotal)}</strong></div>
+                  <p>Доставка рассчитывается при оформлении</p>
+                  <button className="button button--dark checkout-button" type="button" disabled>
+                    Скоро здесь будет оформление
+                  </button>
+                  <button className="continue-shopping" type="button" onClick={() => setCartOpen(false)}>
+                    Продолжить покупки
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="cart-empty">
+                <span aria-hidden="true">♡</span>
+                <p>Здесь пока тихо</p>
+                <span>Добавьте в корзину что-нибудь для дома.</span>
+                <button className="button button--dark" type="button" onClick={() => setCartOpen(false)}>
+                  Перейти к покупкам
+                </button>
+              </div>
+            )}
+          </aside>
+        </div>
+      )}
     </main>
   )
 }

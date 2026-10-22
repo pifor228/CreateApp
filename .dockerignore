@@ -1,0 +1,11 @@
+.git
+.venv
+venv
+**/__pycache__
+**/*.py[cod]
+backend/db.sqlite3*
+backend/staticfiles
+miniapp/node_modules
+miniapp/dist
+miniapp/.wrangler
+.env*
